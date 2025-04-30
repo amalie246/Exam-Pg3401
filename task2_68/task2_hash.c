@@ -1,3 +1,4 @@
+#include <stdio.h>
 /* This file has been created by EWA, and is part of task 2 on the exam for PG3401 2025*/
 /* Original code credited to Dan Bernstein*/
 int Task2_SimpleDjb2Hash(FILE * fFileDescriptor, unsigned int* piHash) {

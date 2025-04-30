@@ -1,8 +1,8 @@
-#ifndef __COUNT_H__
-#define __COUNT_H__
+#ifndef __TASK2_COUNT_H__
+#define __TASK2_COUNT_H__
 
 #include <stdio.h>
 
 int Task2_CountEachCharacter(FILE *fFileDescriptor, char aCountArray[26]);
 
-#endif //__COUNT_H__
+#endif //__TASK2_COUNT_H__
