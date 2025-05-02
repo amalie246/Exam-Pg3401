@@ -17,45 +17,37 @@ void PrintPassengers(FLIGHT_DEPARTURE *pFlight);
 
 int main(int iArgC, char *apszArgV[]){
   int iComplete = CONTINUE;
-  FLIGHT_DEPARTURE *pHead = {0}; 
-  AddFlight(&pHead, "AA-01", "Italy", 140, 2015);
-  AddPassenger(pHead, "Amalie", 21, 2);
-  AddPassenger(pHead, "Nilsen", 21, 1);
+  FLIGHT_DEPARTURE *pHead = {0};
+  AddFlight(&pHead, "AA-01", "Japan", 130, 1415);
+  AddFlight(&pHead, "AA-02", "Netherlands", 120, 0630);
+  AddPassenger(pHead, "Amalie", 21, 4);
+  AddPassenger(pHead, "Sondre", 24, 3);
 
-  AddFlight(&pHead, "AA-02", "France", 180, 1205);
   FLIGHT_DEPARTURE *p1 = GetFlightById(&pHead, "AA-02");
-  AddPassenger(p1, "Sondre", 24, 1);
-  AddPassenger(p1, "Somdal", 25, 10);
-
-  AddFlight(&pHead, "AA-03", "Greece", 89, 1335);
+  AddFlight(&pHead, "AA-03", "Romania", 130, 1745);
   FLIGHT_DEPARTURE *p2 = GetFlightById(&pHead, "AA-03");
-  AddPassenger(p2, "Oda", 21, 10);
-  AddPassenger(p2, "Bergvoll", 22, 9);
-  printf("Before deleting 1. element\n");
-  PrintList(&pHead);
-  DeleteFlight(&pHead, pHead);
-  printf("After deleting 1. element: \n");
-  PrintList(&pHead);
 
-  printf("Before deleting last element: \n");
-  PrintList(&pHead);
-  printf("After deleting last element\n");
-  DeleteFlight(&pHead, p2);
-  PrintList(&pHead);
-  /*while(iComplete != FINISHED){
+  AddPassenger(p1, "Amalie", 21, 3);
+  AddPassenger(p1, "Inger-Lise", 47, 19);
+  
+  AddPassenger(p2, "Sondre", 24, 3);
+  AddPassenger(p2, "Goober", 69, 17);
+
+  printf("\nWelcome to the menu:) \n");
+  while(iComplete != FINISHED){
     PrintMenu();
     iComplete = HandleMenu(&pHead);
     
     if(iComplete == FINISHED){
       break;
     }
-  }*/
+  }
   
   FreeList(&pHead);
 }
 
 int HandleMenu(FLIGHT_DEPARTURE **ppHead){
-  int iComplete = CONTINUE;
+  int iComplete = CONTINUE, iRc = ERROR;
   int iCh = getchar();
   //since getchar leaves \n in stdin, i flush stdin until \n or EOF
   int iFlush = 0;
@@ -65,7 +57,7 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
   
     case '1':
       printf("Enter flight id [format: XX-XX]:\n");
-      char aszFlightId[6] = {0}; //+1 for zero terminator, +1 for newline
+      char aszFlightId[6] = {0}; //+1 for zero terminator
       if(ReadInput(aszFlightId, sizeof(aszFlightId)) != 0){
         break; //only break becaues printf error is in ReadInput
       }
@@ -77,7 +69,7 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
       }
       
       printf("How many seats are available for this flight?\n");
-      char aszSeats[4] = {0}; //max seats is 999, with \0 and \n read
+      char aszSeats[4] = {0}; //max seats is 999, with \0
       if(ReadInput(aszSeats, sizeof(aszSeats)) != 0){
         break;
       }
@@ -106,10 +98,9 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
       break;
   
     case '2':
-      //adding a passenger to a flight by its flightId
+      PrintList(ppHead);
       printf("Enter the FLIGHT ID of the flight you want to ass this passenger on:\n");
       char aszFlight[6] = {0};
-      PrintList(ppHead);
       if(ReadInput(aszFlight, 6) != 0){
         break;
       }
@@ -208,15 +199,76 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
       break;
       
     case '5':
+      printf("Enter the flight ID to the flight you want to delete:\n");
+      char aszDeleteFlightId[6] = {0};
+      if(ReadInput(aszDeleteFlightId, 6) != 0){
+        break;
+      }
+      FLIGHT_DEPARTURE *pDelete = GetFlightById(ppHead, aszDeleteFlightId);
+      if(pDelete == NULL){
+        printf("No such Flight Id in the list\n");
+        break;
+      }
+      
+      if(DeleteFlight(ppHead, pDelete) == ERROR){
+        printf("Coudlnt delete your flight...\n");
+      } else {
+        printf("Deleted flight %s, the list is now: \n", aszDeleteFlightId);
+        PrintList(ppHead);
+      }
+
       break;
       
     case '6':
+      printf("Which passenger do you want to change the seat for? Enter name: \n");
+      char aszNameChangeSeat[BUFFER_SIZE] = {0};
+      if(ReadInput(aszNameChangeSeat, BUFFER_SIZE) != 0){
+        break;
+      }
+      
+      printf("Which flight associated with this passenger? Enter id:\n");
+      char aszSearchFlightId[6] = {0};
+      if(ReadInput(aszSearchFlightId, 6) != 0){
+        break;
+      }
+      
+      printf("Which seat do you want to switch to?\n");
+      char aszNewSeat[4] = {0};
+      if(ReadInput(aszNewSeat, 4) != 0){
+        break;
+      }
+      int iNewSeat = atoi(aszNewSeat);
+      
+      FLIGHT_DEPARTURE *pFlightChangeSeat = GetFlightById(ppHead, aszSearchFlightId);
+      if(pFlightChangeSeat == NULL){
+        printf("No flight associated with the ID you entered\n");
+      } else {
+        iRc = ChangePassengerSeat(pFlightChangeSeat, aszNameChangeSeat, iNewSeat);
+        if(iRc == ERROR){
+          printf("Could not change passenger seat, is the passenger name valid?\n");
+        } else {
+          printf("Changed passenger seat:\n");
+          PrintPassengers(pFlightChangeSeat);
+        }
+      }
+   
       break;
       
     case '7':
+      printf("Enter the name you want to search for: \n");
+      char aszSearchName[BUFFER_SIZE] = {0};
+      if(ReadInput(aszSearchName, BUFFER_SIZE) != 0){
+        break;
+      }
+      iRc = SearchPassengerName(ppHead, aszSearchName);
+      if(iRc == ERROR){
+        printf("No such passengers in the list\n");
+      }
       break;
       
     case '8':
+      printf("List of all passengers that are booked on more than one flight: \n");
+      PrintPassengersOnMultipleFlights(ppHead);
       break;
       
     case '9':
@@ -231,11 +283,13 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
   return iComplete;
 }
 
+//writes into a buffer, returns int for error handling
 int ReadInput(char *pszDestination, int iSize){
   if(fgets(pszDestination, iSize, stdin)){
 
     if(strchr(pszDestination, '\n') == NULL){
-      //fgets did not read everything, so there are more chars left in stdin
+      //fgets did not read everything if the \n wasnt read, so there are more chars
+      //left in stdin
       //i then have to flush the rest and manually zero terminate the last char
       pszDestination[iSize - 1] = '\0';
       int iFlush = 0;
@@ -253,8 +307,7 @@ int ReadInput(char *pszDestination, int iSize){
 }
 
 void PrintMenu(){
-  printf("Welcome to the menu:) \n");
-  printf("1 - Add a flight to the list\n");
+  printf("\n1 - Add a flight to the list\n");
   printf("2 - Add a passenger to a flight-departure\n");
   printf("3 - Retrieve information about a flight-departure\n");
   printf("4 - Find flights that matches departure destination\n");
@@ -263,7 +316,7 @@ void PrintMenu(){
   printf("7 - Search for a passengers name in all flights\n");
   printf("8 - Search through list for any passengers in all flights that are booked on more than 1 flight\n");
   printf("9 - Quit\n");
-  printf("Enter your choice: \n");
+  printf("Enter your choice: \n\n");
 }
 
 //made this function just for testing during the coding
@@ -283,7 +336,7 @@ void PrintPassengers(FLIGHT_DEPARTURE *pFlight){
   printf("------PASSENGERS ON FLIGHT %s------\n", pFlight->aszFlightId);
   PASSENGER *pTemp = *(pFlight->ppPassengerHead);
   while(pTemp != NULL){
-    printf("%d - %s\n", i, pTemp->aszName);
+    printf("%d - %s, age %d, seat %d\n", i, pTemp->aszName, pTemp->iAge, pTemp->iSeat);
     pTemp = pTemp->pNext;
     i++;
   }
