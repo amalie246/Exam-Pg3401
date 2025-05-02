@@ -1,4 +1,3 @@
-#include <stdio.h>
 /* This file has been created by EWA, and is part of task 2 on the exam for PG3401 2025*/
 int Task2_SizeAndSumOfCharacters(FILE* fFileDescriptor, int* piSizeOfFile, int* piSumOfChars) {
    fseek(fFileDescriptor, 0, SEEK_END);

@@ -24,21 +24,23 @@ int main(int iArgC, char *apszArgV[]){
   //setting filename (can be found in the header file, FILENAME)
   strncpy(md->szFileName, FILENAME, 32);
 
-  unsigned int iHash;
+  unsigned int iHash = 0; //initialized it as 0 for no garbage values
   Task2_SimpleDjb2Hash(fInput, &iHash);
   memcpy(md->byHash, &iHash, 4);
 
     
-  int iSizeOfFile = 0, iSumOfChars = 0;
+  int iSizeOfFile = 0, iSumOfChars = 0; //again no garbage
   Task2_SizeAndSumOfCharacters(fInput, &iSizeOfFile, &iSumOfChars);
-  if(iSizeOfFile == 0 || iSumOfChars == 0){
+  //checking if the values are 0 for error handling, because i would say its safe to
+  //assume that they should not be 0
+  if(iSizeOfFile == 0 || iSumOfChars == 0){ 
     printf("Something went wrong in SizeAndSumOfCharacters\n");
     return ERROR;
   }
   md->iFileSize = iSizeOfFile;
   md->iSumOfChars = iSumOfChars;
 
-  char aAlphaCount[26] = {0};
+  char aAlphaCount[26] = {0}; //array is now 26 "0"s
   Task2_CountEachCharacter(fInput, aAlphaCount);
   memcpy(md->aAlphaCount, aAlphaCount, 26);
 
@@ -49,19 +51,10 @@ int main(int iArgC, char *apszArgV[]){
     return ERROR;
   }
 
-  printf("Filename: %s\n", md->szFileName);
-  printf("File size: %d\n", md->iFileSize);
-  printf("Hash: %u\n", md->byHash);
-  printf("Sum: %d\n", md->iSumOfChars);
-  printf("AlphaCount: ");
-  for(int i = 0; i < 26; i++){
-    printf("%d, ", md->aAlphaCount[i]);
-  }
-  printf("\n");
-
-  fwrite(&md, sizeof(struct TASK2_FILE_METADATA), 1, fOutput);
+  fwrite(md, sizeof(struct TASK2_FILE_METADATA), 1, fOutput);
 
   free(md);
+  md = NULL; //no dangling pointers
   fclose(fInput);
   fclose(fOutput);
 

@@ -1,14 +1,14 @@
 INCLDIR = ./include
 CC = gcc
-CFLAGS = -O2 -include stdio.h
+CFLAGS = -g3
 CFLAGS += -I$(INCLDIR)
 
 OBJDIR = obj
 
-_DEPS = main.h hash.h sum.h count.h
+_DEPS = doublelinkedlist.h
 DEPS = $(patsubst %,$(INCLDIR)/%,$(_DEPS))
 
-_OBJS = main.o task2_hash.o task2_sum.o task2_count.o
+_OBJS = main.o doublelinkedlist.o
 OBJS = $(patsubst %,$(OBJDIR)/%,$(_OBJS))
 
 $(OBJDIR)/%.o: %.c $(DEPS)
