@@ -5,12 +5,17 @@
 #include <unistd.h>
 #include <semaphore.h>
 
+#include "include/task4_threads.h"
+
 #define BUFFER_SIZE 4096
 #define NUM_THREADS 2
 #define BYTE_RANGE 256
 
 //struct to avoid global variables
 typedef struct _THREAD_DATA{
+  char aszFileName[124]; //doubt filename is larger than this
+  FILE *fInputFile;
+  int iFinished; //mby delete
   int count[BYTE_RANGE];
   unsigned char buffer[BUFFER_SIZE];
   pthread_mutex_t mutex;
@@ -19,132 +24,114 @@ typedef struct _THREAD_DATA{
   int bytes_in_buffer;
   void *memory_buffer;
 } THREAD_DATA;
-/*
-int count[BYTE_RANGE];
-unsigned char buffer[BUFFER_SIZE];
-pthread_mutex_t mutex;
-pthread_cond_t cond_full, cond_empty;
-int bytes_in_buffer = 0;*/
+
+int totalBytesRead;
 
 void* thread_A(void* arg) {
-printf("thread A started\n");
-  FILE* fp = fopen("task4_pg2265.txt", "rb");
+  //cast void pointer to THREAD_DATA struct
+  THREAD_DATA *td = (THREAD_DATA*)arg;
+  //open file (original code)
+  FILE* fp = fopen(td->aszFileName, "rb");
   if (!fp) {
      perror("Failed to open file");
      exit(EXIT_FAILURE);
   }
-  printf("Opened file by thread A\n");
-  THREAD_DATA *td = (THREAD_DATA*)arg;
+
+  //setting the structs file to fp file descriptor
+  td->fInputFile = fp;
   
   while(1){
+    //locking the mutex
     pthread_mutex_lock(&td->mutex);
-    printf("Thread A: Locked mutex\n");
     
+    //this is while Thread B is working
     while(td->bytes_in_buffer == BUFFER_SIZE){
+      //must manually unlock the mutex, sem_wait does not do it the same way
+      //that pthread_cond_wait() does
       pthread_mutex_unlock(&td->mutex);
-      printf("Thread A: unlocked mutex in while 2\n");
+      //wait here until thread B
       sem_wait(&td->semStart);
-      printf("Thread A: sent wait signal on semStart\n");
+      //lock mutex again
       pthread_mutex_lock(&td->mutex);
-      printf("Thread A: locked mutex again in while 2\n");
     }
-    
+    printf("Bytes in buffer before reading: %d\n");
+    //reading chars into buffer, size of char, 
     int read_bytes = fread(td->buffer + td->bytes_in_buffer, 1, 
     BUFFER_SIZE - td->bytes_in_buffer, fp);
     
+    //bytes_in_buffer increases
+    td->bytes_in_buffer += read_bytes;
+    totalBytesRead +=read_bytes;
+    printf("Bytes in buffer: %d\n", td->bytes_in_buffer);
+    
     if(read_bytes < BUFFER_SIZE - td->bytes_in_buffer){
+      //finished reading the entire file
+      td->iFinished = 1;
       pthread_mutex_unlock(&td->mutex);
-      printf("Thread A: unlocked mutex in if\n");
+      sem_post(&td->semFinish);
       break;
     }
-    
+    //send signal to thread B that thread A is finished, and unlock mutex
     sem_post(&td->semFinish);
-    printf("Thread A: sem post on FINISH\n");
     pthread_mutex_unlock(&td->mutex);
-    printf("Thread A: unlocked mutex in the end\n");
   }
 
-  /*while (1) {
-     pthread_mutex_lock(&td->mutex);
-     while (bytes_in_buffer == BUFFER_SIZE)  
-        pthread_cond_wait(&cond_empty, &td->mutex);
-
-     int read_bytes = fread(buffer + bytes_in_buffer, 1, BUFFER_SIZE - bytes_in_buffer, fp);
-     bytes_in_buffer += read_bytes;
-
-     if (read_bytes < BUFFER_SIZE - bytes_in_buffer) {
-        pthread_mutex_unlock(&mutex);
-        break;
-     }
-     //pthread_cond_signal(&cond_full);
-     pthread_mutex_unlock(&mutex);
-  }*/
   fclose(fp);
   pthread_exit(NULL);
 }
 
 void* thread_B(void* arg) {
-printf("thread B started\n");
+  FILE *fh = fopen("task4_pg2265.hash", "w");
+  if(fh == NULL){
+    printf("Failed to open hash file\n");
+  }
+
+  FILE *ft = fopen("task4_pg2265.enc", "w");
+  if(ft == NULL){
+    printf("Failed to open TEA file\n");
+  }
+  
+  //cast void pointer to THREAD DATA struct
   THREAD_DATA *td = (THREAD_DATA*)arg;
   memset(td->count, 0, sizeof(td->count));
-  printf("thread B memset count\n");
   
   while(1){
     pthread_mutex_lock(&td->mutex);
-    printf("Thread B: locked mutex\n");
     
     while(td->bytes_in_buffer == 0){
+      //wait for thread A to signal that it is finished so B can work
       pthread_mutex_unlock(&td->mutex);
-      printf("Thread B: unlocked mutex in while 2\n");
       sem_wait(&td->semFinish);
-      printf("Thread B: sent wait signal on Finish\n");
       pthread_mutex_lock(&td->mutex);
-      printf("Thread B: locked mutex again in while 2\n");
+    }
+    //The original code snippet from part 1
+    for(int i = 0; i < td->bytes_in_buffer; i++){
+      td->count[td->buffer[i]]++;
     }
     
-    for(int i = 0; i < td->bytes_in_buffer; i++)
-      td->count[td->buffer[i]]++;
-    
-    td->bytes_in_buffer = 0;
-    sem_post(&td->semFinish);
-    printf("Thread B: sent signal to Finish\n");
-    pthread_mutex_unlock(&td->mutex);
-    
-    if(td->bytes_in_buffer == 0){
+    //check if bytes in buffer is 0 in a mutex protected section
+    if(td->bytes_in_buffer == 0 || td->iFinished == 1){
       break;
     }
-    
+
+    //signal that thread A to start again
+    td->bytes_in_buffer = 0;
+    sem_post(&td->semStart);
+    pthread_mutex_unlock(&td->mutex);
   }
   
   for(int i = 0; i < BYTE_RANGE; i++){
     printf("%d: %d\n", i, td->count[i]);
   }
+
+  fclose(fh);
+  fclose(ft);
   pthread_exit(NULL);
-  /*memset(count, 0, sizeof(count));
-
-  while (1) {
-     pthread_mutex_lock(&mutex);
-     while (bytes_in_buffer == 0)
-        pthread_cond_wait(&cond_full, &mutex);
-
-     for (int i = 0; i < bytes_in_buffer; i++)
-        count[buffer[i]]++;
-
-     bytes_in_buffer = 0;
-     //pthread_cond_signal(&cond_empty);
-     pthread_mutex_unlock(&mutex);
-
-     if (bytes_in_buffer == 0)
-        break;
-  }
-  for (int i = 0; i < BYTE_RANGE; i++)
-     printf("%d: %d\n", i, count[i]);
-  pthread_exit(NULL);*/
 }
 
-int main(void) {
+int main(int iArgC, char *apszArgV[]) {
   pthread_t threadA, threadB;
-   
+
   //created a struct for both threads so they can share memory buffer, semaphores etc
   THREAD_DATA *td = malloc(sizeof(THREAD_DATA));   
   if(td == NULL){
@@ -152,12 +139,19 @@ int main(void) {
     return 1;
   }
   td->bytes_in_buffer = 0;
+  td->iFinished = 0; //should be 1 when its completely done reading
   td->memory_buffer = malloc(BUFFER_SIZE);
   if(td->memory_buffer == NULL){
     printf("Malloc failed on struct member memory_buffer\n");
     return 1;
   }
-  //void* memory_buffer = malloc(BUFFER_SIZE);
+  
+  if(iArgC == 2){
+    memcpy(td->aszFileName, apszArgV[1], 124);
+  } else {
+    printf("Must specify file name!!!\n");
+    return 1;
+  }
    
   //initialize semaphores
   if(sem_init(&td->semStart, 0, 0) != 0){
@@ -198,11 +192,9 @@ int main(void) {
   free(td->memory_buffer);
   free(td);
 
+  printf("TOTAL BYTES READ: %d\n", totalBytesRead);
   return 0;
 }
-
-
-
 
 
 

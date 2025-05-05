@@ -1,5 +1,5 @@
 INCLDIR = ./include
-CC = gcc
+CC = gcc -include stdio.h
 CFLAGS = -O2
 CFLAGS += -I$(INCLDIR)
 
@@ -8,7 +8,7 @@ OBJDIR = obj
 _DEPS = task4_threads.h
 DEPS = $(patsubst %,$(INCLDIR)/%,$(_DEPS))
 
-_OBJS = task4_threads.o
+_OBJS = task4_threads.o dbj2.o tea.o
 OBJS = $(patsubst %,$(OBJDIR)/%,$(_OBJS))
 
 $(OBJDIR)/%.o: %.c $(DEPS)
