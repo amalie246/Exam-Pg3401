@@ -53,12 +53,9 @@ int EstablishConnection(int sockFd, struct EWA_EXAM25_TASK5_PROTOCOL_SIZEHEADER 
   memcpy(serverAccept.acStatusCode, "220", sizeof(serverAccept.acStatusCode));
   serverAccept.acHardSpace[0] = 0x20;
 
-  //TODO source stackoverflow (ADD A LINK HERE!!!!!!!!!!!!!!!!!)
-  time_t tTime = time(NULL);
-  struct tm tm = *localtime(&tTime);//day month year hour min sec
-  snprintf(serverAccept.acFormattedString, sizeof(serverAccept.acFormattedString), 
-  "127.0.0.1 SMTP %s %02d %02d %d %02d %02d %02d", pszId, tm.tm_mday, tm.tm_mon + 1, 
-  tm.tm_year + 1900, tm.tm_hour, tm.tm_min, tm.tm_sec);
+  //just used the date of the time when i wrote this
+  char aszString[sizeof(serverAccept.acFormattedString)] = {0};
+  sprintf(aszString, "127.0.0.1 SMTP %s 09.05.2025 18:03:59", pszId);
 
   serverAccept.acHardZero[0] = 0x00;
 
@@ -75,22 +72,23 @@ int EstablishConnection(int sockFd, struct EWA_EXAM25_TASK5_PROTOCOL_SIZEHEADER 
       memcpy(serverHelo.acStatusCode, EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK, 
       sizeof(serverHelo.acStatusCode));
       serverHelo.acHardSpace[0] = 0x20;
+
       //Extracting the clients IP address from clientHelo
       char *pszClientIp = malloc(sizeof(serverHelo.acFormattedString));
-      char *pszClientGreeting = "Hello sensor";
+      char *pszClientGreeting = " Hello sensor";
 
       //finding where the ip starts, which is after the first 0
-      int iIndex = strcspn(clientHelo.acFormattedString, ".");
+      int iIndex = strcspn(clientHelo.acFormattedString, ".") + 1;
       //then copy values into pszClientId
       int i = 0, iClientHeloStart = strlen(clientHelo.acFormattedString) - iIndex;
       while(1){
         pszClientIp[i] = clientHelo.acFormattedString[i + iIndex];
         i++;
-        if(i >= strlen(clientHelo.acFormattedString) - iClientHeloStart || 
-        i >= sizeof(pszClientIp)){
+        if(i >= sizeof(clientHelo.acFormattedString) - iClientHeloStart){
           break;
         }
       }
+
       //concatenating cliend ip and the greeting message
       strcat(pszClientIp, pszClientGreeting);
       //since pszClientIp is zero terminated, im copying 1 less than the strlen
@@ -115,7 +113,53 @@ int EstablishConnection(int sockFd, struct EWA_EXAM25_TASK5_PROTOCOL_SIZEHEADER 
   return iRc;
 }
 
-void ReadFile(){}
+void ReadToFile(FILE *f, int sockFd){
+  int iBytesRead = 0, iTotalRead = 0;
+  //recieve data and write to file
+  //just assuming that the data is 9999 - 1 bytes
+  struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATAFILE *pDataFile = malloc(
+  sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATAFILE) + 9999);
+  int iStructSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATAFILE);
+ 
+  //first read the head part
+  iBytesRead = recv(sockFd, pDataFile, iStructSize - 1, 0);
+  if(iBytesRead < 0){
+    printf("Failed to read header for data file\n");
+  } else {
+    //get size from the header, from datasize to delimeter
+    char aszDataSize[5] = {0}; //must be +1 since zero terminator
+    memcpy(aszDataSize, pDataFile->stHead.acDataSize, 4);
+    aszDataSize[5] = '\0';
+    
+    int iDataSize = atoi(aszDataSize);
+    if(iDataSize == 0){
+      printf("Couldnt get data size\n");
+    } else {
+      //now recv the data with datasize
+      while(1){
+        //+iTotalBytesRead in case there are multiple recv calls, so it appends
+        iBytesRead = recv(sockFd, pDataFile->acFileContent + iTotalRead, iDataSize, 0);
+        iTotalRead += iBytesRead;
+
+        if(iBytesRead == 0){
+          printf("Finished reading file content from client\n");
+          break;
+        }
+        
+        if(iTotalRead >= iDataSize){
+          printf("Finished reading file content from client\n");
+          break;
+        }
+      }
+
+      //now that every piece of data is read.. write it to the file
+      //crlf crlf is 5 bytes, so just subtract that from the amount to be written
+      fwrite(pDataFile->acFileContent, iTotalRead - 5, 1, f);
+    }
+  }
+  
+  free(pDataFile);
+}
 
 int main(int iArgC, char *apszArgV[]){
   struct sockaddr_in saAddr = {0}; //for binding
@@ -132,7 +176,7 @@ int main(int iArgC, char *apszArgV[]){
     if(iPortCmp + iIdCmp == 0){
       
       iPort = atoi(apszArgV[2]);
-      if(iPort != 0 /*&& strlen(apszArgV[2]) < 32*/){
+      if(iPort != 0){
         memcpy(aszId, apszArgV[4], strlen(apszArgV[4]));
         aszId[strlen(apszArgV[4]) - 1] == '\0';
       } else {
@@ -162,7 +206,7 @@ int main(int iArgC, char *apszArgV[]){
   
   saAddr.sin_family = AF_INET;
   saAddr.sin_port = htons(iPort);
-  saAddr.sin_addr.s_addr = htonl(0x7F000001); //hardcodin 127.0.0.1
+  saAddr.sin_addr.s_addr = htonl(0x7F000001); //hardcoding 127.0.0.1
   
   if(bind(sockFd, (struct sockaddr*)&saAddr, sizeof(saAddr)) < 0){
     printf("Bind failed\n");
@@ -197,7 +241,7 @@ int main(int iArgC, char *apszArgV[]){
     return 1;
   }
 
-  
+  //recieveing mailFrom struct
   struct EWA_EXAM25_TASK5_PROTOCOL_MAILFROM mailFrom = {0};
   int iMailFromSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_MAILFROM);
   if(recv(sockNewFd, &mailFrom, iMailFromSize, 0) < 0){
@@ -207,17 +251,139 @@ int main(int iArgC, char *apszArgV[]){
     return 1;
   }
   
-  //check if mailFrom was okay
-  char *pszStatusCode = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK;
-  char *pszFormattedString = "Sender address is OK";
-  if(SendServerReply(sockNewFd, header, pszStatusCode, pszFormattedString, 
-  strlen(pszFormattedString)) < 0){
+  //chekcing if its a valid email by seeing if it has the @ in it
+  //if it is less than the strlen, it contains the @
+  if(strcspn(mailFrom.acFormattedString, "@") < strlen(mailFrom.acFormattedString)){
+    //it is is valid, send the next ok server reply
+    char *pszStatusMailTo = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK;
+    char *pszMailToString = "Sender address is OK";
+    if(SendServerReply(sockNewFd, header, pszStatusMailTo, pszMailToString, 
+    strlen(pszMailToString)) < 0){
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+  } else {
+    //send that email addres was not okay, and that the server is closing
+    char *pszStatusMailTo = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
+    char *pszMailToString = "Sender address is invalid, closing server";
+    if(SendServerReply(sockNewFd, header, pszStatusMailTo, pszMailToString, 
+    strlen(pszMailToString)) < 0){
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+    
     close(sockNewFd); sockNewFd = -1;
     close(sockFd); sockFd = -1;
     return 1;
   }
   
+  //recieve rcptTo struct
+  struct EWA_EXAM25_TASK5_PROTOCOL_RCPTTO rcptTo = {0};
+  int iRcptToSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_RCPTTO);
+  if(recv(sockNewFd, &rcptTo, iRcptToSize, 0) < 0){
+    printf("Failed to recieve RCPTTO\n");
+    close(sockNewFd); sockNewFd = -1;
+    close(sockFd); sockFd = -1;
+    return 1;
+  }
 
+  //check if rcptTo recieveing email is okay the same way as sender email
+  if(strcspn(rcptTo.acFormattedString, "@") < strlen(rcptTo.acFormattedString)){
+    char *pszStatusRcptTo = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK;
+    char *pszRcptToString = "Recieving address is OK";
+    if(SendServerReply(sockNewFd, header, pszStatusRcptTo, pszRcptToString, 
+    strlen(pszRcptToString)) < 0){
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+  } else {
+    char *pszStatusRcptTo = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
+    char *pszRcptToString = "Recieving address is invalid, closing server";
+    if(SendServerReply(sockNewFd, header, pszStatusRcptTo, pszRcptToString, 
+    strlen(pszRcptToString)) < 0){
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+    
+    close(sockNewFd); sockNewFd = -1;
+    close(sockFd); sockFd = -1;
+    return 1;
+  }
+  
+  //retrieve filename to open this file and write to it
+  struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATACMD dataCmd = {0};
+  int iDataCmdSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATACMD);
+  if(recv(sockNewFd, &dataCmd, iDataCmdSize, 0) < 0){
+    printf("Failed to recieve CLIENTDATACMD\n");
+    close(sockNewFd); sockNewFd = -1;
+    close(sockFd); sockFd = -1;
+    return 1;
+  }
+  char aszFileName[sizeof(dataCmd.acFormattedString)] = {0};
+  memcpy(aszFileName, dataCmd.acFormattedString, sizeof(aszFileName));
+  
+  //check if filename is valid by opening the file
+  FILE *f = fopen(aszFileName, "w");
+  if(f == NULL){
+    printf("Failed to open file, might be due to invalid filename\n");
+  
+    //send a struct that says it failed
+    char *pszStatusDataCmd = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
+    char *pszDataCmdString = "Invalid filename";
+    SendServerReply(sockNewFd, header, pszStatusDataCmd, pszDataCmdString, 
+    strlen(pszDataCmdString));
+  
+    fclose(f);
+    close(sockNewFd); sockNewFd = -1;
+    close(sockFd); sockFd = -1;
+    return 1;
+  } else {
+    //send struct that says server is ready for data
+    char *pszStatusDataCmd = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_READY;
+    char *pszDataCmdString = "Filename is Okay";
+    if(SendServerReply(sockNewFd, header, pszStatusDataCmd, pszDataCmdString, 
+    strlen(pszDataCmdString)) < 0){
+      fclose(f);
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+  }
+  ReadToFile(f, sockNewFd);
+  fclose(f); 
+
+  //send next struct that says OK  
+  char *pszStatusNext = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK;
+  char *pszNextMessage = "Read and wrote to file\n";
+  if(SendServerReply(sockNewFd, header, pszStatusNext, pszNextMessage, 
+  strlen(pszNextMessage)) >= 0){
+  
+    //recieve quit message
+    struct EWA_EXAM25_TASK5_PROTOCOL_CLOSECOMMAND quitCmd = {0};
+    int iQuitSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_CLOSECOMMAND);
+    if(recv(sockNewFd, &quitCmd, iQuitSize, 0) < 0){
+      printf("Failed to read QUIT command\n");
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+    
+    //then send server is closing
+    char *pszStatusQuit = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
+    char *pszQuitMessage = "Server is closing";
+    if(SendServerReply(sockNewFd, header, pszStatusQuit, pszQuitMessage, 
+    strlen(pszQuitMessage)) < 0){
+      close(sockNewFd); sockNewFd = -1;
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+  }
+
+  //cleanup and exit program
   close(sockNewFd);
   sockNewFd = -1;
   close(sockFd);
