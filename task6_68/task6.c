@@ -27,56 +27,72 @@ void decrypt(unsigned int *const v, unsigned int *const w, const unsigned int *c
   
   w[0]=y; w[1]=z;
 }
+int CheckChar(char c){
 
-void FindKeyDecrypt(char *pcEncryptedText){
-  //loop through all the keys, then try to decrpty 64-bit at a time
-  for(int i = 0x00; i < 0xFF; i++){
-    char uiHexValue[4] = {i, i, i, i};
+}
 
-    //then convert key to unsigned int
-    unsigned int uiKey[4] = {0};
-    memcpy(&uiKey[0], uiHexValue, 4);
-    memcpy(&uiKey[1], uiHexValue, 4);
-    memcpy(&uiKey[2], uiHexValue, 4);
-    memcpy(&uiKey[3], uiHexValue, 4);
+void DecryptText(char *pcEncryptedText, unsigned int uiKey[4]){
+  int iTotalBytes = 0, iBufferIndex = 0, iBytesToRead = strlen(pcEncryptedText);
+  
+  char acDecrypted[4096] = {0};
+  while(1){
+    char cBuf[9] = {0}; //8 bytes = 64 bit
+    int iBytesRead = 0;
     
-    //then get 64-bit at a time from the buffer
-    //reused my code from task4_threads.c in the TEA() function, making some changes to
-    //fit this purpose instead
-    int iTotalBytes = 0, iBytesToRead = strlen(pcEncryptedText), iBufferIndex = 0;
-    while(iTotalBytes <= iBytesToRead){
-      char cBuf[9] = {0}; //8 bytes = 64 bit
-      int iBytesRead = 0;
+    //copy only 8 bytes into the buffer, since it is pkcs5 padded, i think
+    //that the full text has a size divisible by 8
+    memcpy(cBuf, pcEncryptedText + iBufferIndex, 8);
+    iBufferIndex += 8;
+    iTotalBytes += 8;
+  
+    //convert cBuf to an unsigned int
+    unsigned int uiV[2] = {0};
+    memcpy(&uiV[0], cBuf, 4);
+    memcpy(&uiV[1], cBuf + 4, 4);
+    cBuf[9] = '\0';
     
-      //copy only 8 bytes into the buffer, since it is pkcs5 padded, i think
-      //that the full text has a size divisible by 8
-      memcpy(cBuf, pcEncryptedText + iBufferIndex, 8);
-      iBufferIndex += 8;
-    
-      //convert cBuf to an unsigned int
-      unsigned int uiV[2] = {0};
-      memcpy(&uiV[0], cBuf, 4);
-      memcpy(&uiV[1], cBuf + 4, 4);
-      cBuf[9] = '\0';
-    
-      //where the decrypted text should go
-      unsigned int uiW[2] = {0};
+    //where the decrypted text should go
+    unsigned int uiW[2] = {0};
       
-      //for each key combination, try to decipher
-      decrypt(uiV, uiW, uiKey);
-      printf("%d - Decrypted str: %s\n", i, uiW);
+    //for each key combination, try to decipher
+    decrypt(uiV, uiW, uiKey);
       
-      //FIXME for testing, just break after 1 iteration..
+    char acDecrypted[8] = {0};
+    memcpy(acDecrypted, uiW, 8);
+      
+    printf("%s", acDecrypted);
+    
+    if(iTotalBytes >= iBytesToRead){
       break;
     }
   }
+  printf("\n");
 }
+
+void BruteForce(char *pcEncryptedText){
+  for(int i = 0; i < 256; i++){
+    unsigned int uiKey[4] = {0};
+
+    char acHex[8] = {0};
+    sprintf(acHex, "%02X%02X%02X%02X", i, i, i, i);
+    int iHex = strtol(acHex, NULL, 16);
+    
+    uiKey[0] = iHex;
+    uiKey[1] = iHex;
+    uiKey[2] = iHex;
+    uiKey[3] = iHex;
+
+    printf("\nKEY: %X %X %X %X\n", uiKey[0], uiKey[1], uiKey[2], uiKey[3]);
+    DecryptText(pcEncryptedText, uiKey);
+  }
+}
+
 
 //for setting up the client, i reused code from exam preparations task 3
 //with the client.c code, same as for task 5.
 //PG3401_Exercises_09-12_exam_preparation.pdf
 int main(int iArgC, char *apszArgV[]){
-  char aszIpAddr[16] = {0}; //think this is max size for an ip address
+  /*char aszIpAddr[16] = {0}; //think this is max size for an ip address
   int iPort = 0, iRc = ERROR;
   
   if(iArgC == 5){
@@ -146,39 +162,24 @@ int main(int iArgC, char *apszArgV[]){
   //done with socket, close it
   close(sockFd);
   sockFd = -1;
-
-  //extract file contents from this format (may be different each time, i dont know
-  /* 
-    Successfully connected
-    Recieved: HTTP/1.1 200 OK
-    Connection close
-    Date: Sat, May 10 2025 18:06:13
-    Server: Eastwill Assistant - EXAM 2025
-    Content-Length: 648
-    Content-Type: text/encrypted
-
-    >��$��@�*wv}g\�A���{<Q�
-
-  */
   
-  //find what matched Content-Type: text/encrypted\r\n (\r\n because it is HTTP/1.1)
-  char *pcContentType = "Content-Type: text/encrypted\r\n\r\n";
+  //find what matched \r\n\r\n (\r\n\r\n because it is HTTP/1.1)
+  char *pcCRLF = "\r\n\r\n";
   //strstr returns pointer to the match inside acBuf
-  char *pcEncryptedText = strstr(acBuf, pcContentType);
+  char *pcEncryptedText = strstr(acBuf, pcCRLF);
   if(pcEncryptedText == NULL){
     printf("Couldnt find a string match\n");
     return 1;
   }
-  //move past the strlen of pcContentType to get to encrypted text
-  pcEncryptedText += strlen(pcContentType);
-
-  //remove the last \r\n's because it doesnt need to be decrypted
-  //FIXME this doesnt work if the encrypted text contains \r\n
-  //pcEncryptedText[strcspn(pcEncryptedText, "\r\n")] = '\0';
+  //move 4 ahead, because \r\n\r\n is 4 bytes
+  pcEncryptedText += 4;
 
   printf("\nENCRYPTED TEXT: %s\n", pcEncryptedText);
-  //try keys and decrypt
-  FindKeyDecrypt(pcEncryptedText);
+  //try keys and decrypt*/
+
+  //trying a test string:
+  char *pcEncryptedText = "FFFFFFB8FFFFFFE061FFFFFFE2FFFFFF8865FFFFFFE371";
+  BruteForce(pcEncryptedText);
   
   //when it is decrypted, create a file and write the decrypted values
 
