@@ -162,6 +162,10 @@ void ReadToFile(FILE *f, int sockFd){
 }
 
 int main(int iArgC, char *apszArgV[]){
+  //For setting up the server, I reused old code from the exam prep slides:
+  //PG3401_Exercises_09-12_exam_preparation.pdf, where the slides showed how
+  //to set up a server, with bind and accept
+  //the rest is my own code
   struct sockaddr_in saAddr = {0}; //for binding
   struct sockaddr_in saClientConnection = {0}; //for accepting
   int iOk = 0, iPort = 0, iReadValue = 0, iAddrLen = sizeof(saAddr);

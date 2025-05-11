@@ -18,20 +18,6 @@ void PrintPassengers(FLIGHT_DEPARTURE *pFlight);
 int main(int iArgC, char *apszArgV[]){
   int iComplete = CONTINUE;
   FLIGHT_DEPARTURE *pHead = {0};
-  AddFlight(&pHead, "AA-01", "Japan", 130, 1415);
-  AddFlight(&pHead, "AA-02", "Netherlands", 120, 0630);
-  AddPassenger(pHead, "Amalie", 21, 4);
-  AddPassenger(pHead, "Sondre", 24, 3);
-
-  FLIGHT_DEPARTURE *p1 = GetFlightById(&pHead, "AA-02");
-  AddFlight(&pHead, "AA-03", "Romania", 130, 1745);
-  FLIGHT_DEPARTURE *p2 = GetFlightById(&pHead, "AA-03");
-
-  AddPassenger(p1, "Amalie", 21, 3);
-  AddPassenger(p1, "Inger-Lise", 47, 19);
-  
-  AddPassenger(p2, "Sondre", 24, 3);
-  AddPassenger(p2, "Goober", 69, 17);
 
   printf("\nWelcome to the menu:) \n");
   while(iComplete != FINISHED){
@@ -135,34 +121,6 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
         break;
       }
       int iSeat = atoi(aszSeat);
-
-      /*while(1){ FIXME
-        char aszSeat[4] = {0};
-        if(ReadInput(aszSeat, 4) == 0){
-          //if atoi fails, it retuns 0. 0 Is a valid seat, so i dont have to check the atoi value, because if the user types "sdfghj" the seat chosen will be 0 :)
-          iChosenSeat = atoi(aszSeat);
-          
-          //now we have the seat, then loop through all passengers and see if the seat is taken
-          PASSENGER *pPassenger = *(pFlight->ppPassengerHead);
-          int iTaken = 0;
-          while(pPassenger != NULL){
-            if(iChosenSeat == pPassenger->iSeat){
-              iTaken = 1;
-              break;
-            }
-            pPassenger = pPassenger->pNext;
-          }
-          
-          if(iTaken == 0){
-            //if its not taken then we have found an available seat
-            printf("Seat was available! Your spot is %d\n", iChosenSeat);
-            break;
-          } else {
-            printf("That seat was already taken... Enter a new seat:\n");
-            continue;
-          }
-        }
-      }*/
       
       if(AddPassenger(pFlight, aszName, iAge, iChosenSeat) != 0){
         printf("Coulndt add passenger to this flight...\n");
