@@ -16,7 +16,7 @@
 //Source: https://www.schneier.com/wp-content/uploads/2015/03/TEA-2.c
 //Changes made: changed from long to int
 void decrypt(unsigned int *const v, unsigned int *const w, const unsigned int *const k){
-  register unsigned int y=v[0], z=v[1], sum=0xC6EF3720, delta=0x9E779B9, a=k[0],
+  register unsigned int y=v[0], z=v[1], sum=0xC6EF3720, delta=0x9E3779B9, a=k[0],
   b=k[1], c=k[2], d=k[3], n=32;
   
   while(n-->0){
@@ -27,63 +27,85 @@ void decrypt(unsigned int *const v, unsigned int *const w, const unsigned int *c
   
   w[0]=y; w[1]=z;
 }
-int CheckChar(char c){
 
+//this function should work as an allow list for characters, so that
+//the gibberish is not printed out and decrypted...
+int CheckChar(int iC){
+  int iRc = ERROR;
+  //i just found the decimal ascii values from an ascii table
+
+  //lower and upper bound for printable characters, https://www.ascii-code.com
+  int iLowAscii = 32, iHighAscii = 127;
+  //maybe also need other chars like \r, \n, \t just in case
+  int iCr = 13, iLf = 10, iTab = 9;
+
+  //then check if it is either the special chars or in the printable
+  if(iC >= iLowAscii && iC <= iHighAscii){
+    iRc = OK;
+  }
+  
+  if(iC == 13 || iC == iLf || iC == iTab){
+    iRc = OK;
+  }
+
+  return iRc;
 }
 
-void DecryptText(char *pcEncryptedText, unsigned int uiKey[4]){
-  int iTotalBytes = 0, iBufferIndex = 0, iBytesToRead = strlen(pcEncryptedText);
-  
-  char acDecrypted[4096] = {0};
-  while(1){
-    char cBuf[9] = {0}; //8 bytes = 64 bit
-    int iBytesRead = 0;
-    
-    //copy only 8 bytes into the buffer, since it is pkcs5 padded, i think
-    //that the full text has a size divisible by 8
-    memcpy(cBuf, pcEncryptedText + iBufferIndex, 8);
-    iBufferIndex += 8;
-    iTotalBytes += 8;
-  
-    //convert cBuf to an unsigned int
+//decrypts the unsigned ints, 64-bits at a time, checks if all decrypted
+//characters are okay, if so then write into pszDecrypted
+int DecryptText(unsigned int *puiText, unsigned int uiKey[4], int iSize, 
+char *pszDecrypted){
+  int iRc = ERROR, iTotalBytes = 0;
+  for(int i = 0; i < iSize; i += 2){
     unsigned int uiV[2] = {0};
-    memcpy(&uiV[0], cBuf, 4);
-    memcpy(&uiV[1], cBuf + 4, 4);
-    cBuf[9] = '\0';
+    uiV[0] = puiText[i];
+    uiV[1] = puiText[i + 1];
     
-    //where the decrypted text should go
     unsigned int uiW[2] = {0};
-      
-    //for each key combination, try to decipher
-    decrypt(uiV, uiW, uiKey);
-      
-    char acDecrypted[8] = {0};
-    memcpy(acDecrypted, uiW, 8);
-      
-    printf("%s", acDecrypted);
     
-    if(iTotalBytes >= iBytesToRead){
-      break;
+    decrypt(uiV, uiW, uiKey);
+    char cRes[9] = {0};
+    memcpy(cRes, uiW, 8);
+    cRes[8] = '\0';
+    
+    //check if all 8 bytes are printable, if not, no need to continue decrypting
+    for(int j = 0; j < 8; j++){
+      if(CheckChar(cRes[j]) == ERROR){
+        return iRc;
+      }
     }
+    iRc = OK;
+    //if it reaches here, it means we have a possible good decrypt
+    printf("%s", cRes);
+
+    //return it back to the pszDecrypted
+    memcpy(pszDecrypted + iTotalBytes, cRes, 8);
+    iTotalBytes += 8;
   }
   printf("\n");
+  return iRc;
 }
 
-void BruteForce(char *pcEncryptedText){
+//loops through all combinations for 0x00 to 0xFF and also creates the repeating
+//pattern that the key needs to have
+void BruteForce(unsigned int *puiText, int iSize, char *pszDecrypted){
   for(int i = 0; i < 256; i++){
     unsigned int uiKey[4] = {0};
 
     char acHex[8] = {0};
     sprintf(acHex, "%02X%02X%02X%02X", i, i, i, i);
-    int iHex = strtol(acHex, NULL, 16);
+    //make sure that it actually is treated like hex so i use strtol
+    unsigned int iHex = strtol(acHex, NULL, 16);
     
     uiKey[0] = iHex;
     uiKey[1] = iHex;
     uiKey[2] = iHex;
     uiKey[3] = iHex;
 
-    printf("\nKEY: %X %X %X %X\n", uiKey[0], uiKey[1], uiKey[2], uiKey[3]);
-    DecryptText(pcEncryptedText, uiKey);
+    //print key if its a good decrypt
+    if(DecryptText(puiText, uiKey, iSize, pszDecrypted) != ERROR){
+      printf("\nKEY: %X %X %X %X\n", uiKey[0], uiKey[1], uiKey[2], uiKey[3]);
+    }
   }
 }
 
@@ -92,7 +114,7 @@ void BruteForce(char *pcEncryptedText){
 //with the client.c code, same as for task 5.
 //PG3401_Exercises_09-12_exam_preparation.pdf
 int main(int iArgC, char *apszArgV[]){
-  /*char aszIpAddr[16] = {0}; //think this is max size for an ip address
+  char aszIpAddr[16] = {0}; //think this is max size for an ip address
   int iPort = 0, iRc = ERROR;
   
   if(iArgC == 5){
@@ -146,42 +168,48 @@ int main(int iArgC, char *apszArgV[]){
     close(sockFd); sockFd = -1;
     return 1;
   }
+ 
+ //copied pszHeader from the terminal, added \r\n after each line and \r\n\r\n at end
+  /*char *pszHeader = "HTTP/1.1 200 OK\r\nConnection close\r\nDate: Mon, May 12 2025 13:40:51\r\nServer: Eastwill Assistant - EXAM 2025\r\nContent-Length: 648\r\nContent-Type: text/encrypted\r\n\r\n";
+  int iHeaderSize = strlen(pszHeader);  //HEADER SIZE IS 161
+  printf("Header size: %d\n", iHeaderSize);*/
   
-  printf("Successfully connected\n");
-  
-  //recieve a file, TEA encrypted
-  char acBuf[BUFFER_SIZE] = {0};
-  if(recv(sockFd, acBuf, sizeof(acBuf), 0) < 0){
-    printf("Recieve failed\n");
+  //i know its bad but i couldnt figure out how to do it properly, so i found
+  //out that the length of the header is 161 chars with the commented out code above
+  char acHeader[162] = {0};
+  if(recv(sockFd, acHeader, 161, 0) < 0){
+    printf("Recv failed\n");
     close(sockFd); sockFd = -1;
     return 1;
   }
-  //with this, I found that the protocol is HTTP/1.1, as used in previous exams (2021)
-  printf("Recieved: %s\n", acBuf);
+  acHeader[161] = '\0';
+  printf("%s\n", acHeader);
+
+  //recieving 162 unisgned ints because 648 / 4 (sizeof unsigned int) = 162
+  unsigned int uiV[162];
+  if(recv(sockFd, uiV, 648, 0) < 0){
+    printf("Failed to recieve binary file\n");
+    close(sockFd); sockFd = -1;
+    return 1;
+  }
   
-  //done with socket, close it
+  //finished with socket, so just closing it
   close(sockFd);
   sockFd = -1;
   
-  //find what matched \r\n\r\n (\r\n\r\n because it is HTTP/1.1)
-  char *pcCRLF = "\r\n\r\n";
-  //strstr returns pointer to the match inside acBuf
-  char *pcEncryptedText = strstr(acBuf, pcCRLF);
-  if(pcEncryptedText == NULL){
-    printf("Couldnt find a string match\n");
-    return 1;
-  }
-  //move 4 ahead, because \r\n\r\n is 4 bytes
-  pcEncryptedText += 4;
-
-  printf("\nENCRYPTED TEXT: %s\n", pcEncryptedText);
-  //try keys and decrypt*/
-
-  //trying a test string:
-  char *pcEncryptedText = "FFFFFFB8FFFFFFE061FFFFFFE2FFFFFF8865FFFFFFE371";
-  BruteForce(pcEncryptedText);
+  //here should the decrypted text go
+  char acDecrypted[648] = {0};
+  BruteForce(uiV, 162, acDecrypted);
   
   //when it is decrypted, create a file and write the decrypted values
+  FILE *f = fopen("decrypted.txt", "w");
+  if(f == NULL){
+    printf("Failed to open file\n");
+    return 1;
+  }
+  
+  fwrite(acDecrypted, strlen(acDecrypted), 1, f);
 
+  fclose(f);
   return 0;
 }

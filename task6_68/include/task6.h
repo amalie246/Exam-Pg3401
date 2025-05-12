@@ -4,7 +4,6 @@
 #define OK 0
 #define ERROR 1
 
-#define BUFFER_SIZE 4096
-#define LINE_BUFFER 256
+#define HEADER_SIZE 512
 
 #endif //__TASK6_H__
