@@ -318,72 +318,96 @@ int main(int iArgC, char *apszArgV[]){
     return 1;
   }
   
-  //retrieve filename to open this file and write to it
-  struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATACMD dataCmd = {0};
-  int iDataCmdSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATACMD);
-  if(recv(sockNewFd, &dataCmd, iDataCmdSize, 0) < 0){
-    printf("Failed to recieve CLIENTDATACMD\n");
-    close(sockNewFd); sockNewFd = -1;
-    close(sockFd); sockFd = -1;
-    return 1;
-  }
-  char aszFileName[sizeof(dataCmd.acFormattedString)] = {0};
-  memcpy(aszFileName, dataCmd.acFormattedString, sizeof(aszFileName));
-  
-  //check if filename is valid by opening the file
-  FILE *f = fopen(aszFileName, "w");
-  if(f == NULL){
-    printf("Failed to open file, might be due to invalid filename\n");
-  
-    //send a struct that says it failed
-    char *pszStatusDataCmd = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
-    char *pszDataCmdString = "Invalid filename";
-    SendServerReply(sockNewFd, header, pszStatusDataCmd, pszDataCmdString, 
-    strlen(pszDataCmdString));
-  
-    fclose(f);
-    close(sockNewFd); sockNewFd = -1;
-    close(sockFd); sockFd = -1;
-    return 1;
-  } else {
-    //send struct that says server is ready for data
-    char *pszStatusDataCmd = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_READY;
-    char *pszDataCmdString = "Filename is Okay";
-    if(SendServerReply(sockNewFd, header, pszStatusDataCmd, pszDataCmdString, 
-    strlen(pszDataCmdString)) < 0){
-      fclose(f);
-      close(sockNewFd); sockNewFd = -1;
-      close(sockFd); sockFd = -1;
-      return 1;
-    }
-  }
-  ReadToFile(f, sockNewFd);
-  fclose(f); 
-
-  //send next struct that says OK  
-  char *pszStatusNext = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK;
-  char *pszNextMessage = "Read and wrote to file\n";
-  if(SendServerReply(sockNewFd, header, pszStatusNext, pszNextMessage, 
-  strlen(pszNextMessage)) >= 0){
-  
-    //recieve quit message
-    struct EWA_EXAM25_TASK5_PROTOCOL_CLOSECOMMAND quitCmd = {0};
-    int iQuitSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_CLOSECOMMAND);
-    if(recv(sockNewFd, &quitCmd, iQuitSize, 0) < 0){
-      printf("Failed to read QUIT command\n");
+  //reading in a loop in case client sends another dataCmd
+  while(1){
+    //check if client sends quit or data (in first iteration it will send data)
+    
+    //I first recieve into the header
+    struct EWA_EXAM25_TASK5_PROTOCOL_SIZEHEADER clientHead = {0};
+    int iClientHeaderSize = sizeof(struct EWA_EXAM25_TASK5_PROTOCOL_SIZEHEADER);
+    if(recv(sockNewFd, &clientHead, iClientHeaderSize, 0) < 0){
+      printf("Failed to read head\n");
       close(sockNewFd); sockNewFd = -1;
       close(sockFd); sockFd = -1;
       return 1;
     }
     
-    //then send server is closing
-    char *pszStatusQuit = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
-    char *pszQuitMessage = "Server is closing";
-    if(SendServerReply(sockNewFd, header, pszStatusQuit, pszQuitMessage, 
-    strlen(pszQuitMessage)) < 0){
+    //then, either if it is quit or data, acCommand has 4 bytes so read into that
+    char acCommand[5] = {0};
+    if(recv(sockNewFd, acCommand, 4, 0) < 0){
+      printf("Failed to read command\n");
       close(sockNewFd); sockNewFd = -1;
       close(sockFd); sockFd = -1;
       return 1;
+    }
+    acCommand[4] = '\0';
+    if(strcmp(acCommand, "DATA") == 0){
+      //recieve the rest of the CLIENTDATACMD struct, then send READY and recieve file
+      struct EWA_EXAM25_TASK5_PROTOCOL_CLIENTDATACMD dataCmd = {0};
+      dataCmd.stHead = clientHead;
+      memcpy(&dataCmd.acCommand, acCommand, 4);
+      
+      //recieving the rest of the structs MEMBERS instead of the whole struct,
+      //because I do not now if its safe to just read directly into the struct
+      //after reading half of it already
+      if(recv(sockNewFd, &dataCmd.acHardSpace, 1, 0) < 0) break;
+      if(recv(sockNewFd, &dataCmd.acFormattedString, 50, 0) < 0) break;
+      if(recv(sockNewFd, &dataCmd.acHardZero, 1, 0) < 0) break;
+      
+      //now recieve the data
+      FILE *f = fopen(dataCmd.acFormattedString, "w");
+      if(f == NULL){
+        printf("Failed to open file, might be due to invalid filename\n");
+  
+        //send a struct that says it failed
+        char *pszStatusDataCmd = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
+        char *pszDataCmdString = "Invalid filename";
+        SendServerReply(sockNewFd, header, pszStatusDataCmd, pszDataCmdString, 
+        strlen(pszDataCmdString));
+  
+        fclose(f);
+        close(sockNewFd); sockNewFd = -1;
+        close(sockFd); sockFd = -1;
+        return 1;
+      } else {
+        //send struct that says server is ready for data
+        char *pszStatusDataCmd = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_READY;
+        char *pszDataCmdString = "Filename is Okay";
+        if(SendServerReply(sockNewFd, header, pszStatusDataCmd, pszDataCmdString, 
+        strlen(pszDataCmdString)) < 0){
+          fclose(f);
+          close(sockNewFd); sockNewFd = -1;
+          close(sockFd); sockFd = -1;
+          return 1;
+        }
+        //read file contents and write to file
+        ReadToFile(f, sockNewFd);
+        fclose(f);
+        
+        //send OK reply from server
+        char *pszStatusNext = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_OK;
+        char *pszNextMessage = "Read and wrote to file\n";
+        SendServerReply(sockNewFd, header, pszStatusNext, pszNextMessage, 
+        strlen(pszNextMessage));
+      }
+    } else {
+      //if it is not DATA, then its QUIT
+      struct EWA_EXAM25_TASK5_PROTOCOL_CLOSECOMMAND closeCmd = {0};
+      closeCmd.stHead = clientHead;
+      memcpy(&closeCmd.acCommand, acCommand, 4);
+      
+      if(recv(sockNewFd, &closeCmd.acFormattedString, 51, 0) < 0) break;
+      if(recv(sockNewFd, &closeCmd.acHardZero, 1, 0) < 0) break;
+      
+      //send that server is closing
+      char *pszStatusQuit = EWA_EXAM25_TASK5_PROTOCOL_SERVERREPLY_CLOSED;
+      char *pszQuitMessage = "Server is closing";
+      if(SendServerReply(sockNewFd, header, pszStatusQuit, pszQuitMessage, 
+      strlen(pszQuitMessage)) < 0){
+        close(sockNewFd); sockNewFd = -1;
+        close(sockFd); sockFd = -1;
+        return 1;
+      }
     }
   }
 

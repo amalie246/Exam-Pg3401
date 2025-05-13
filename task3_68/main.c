@@ -5,10 +5,6 @@
 #define CONTINUE 0
 #define FINISHED 1
 
-//TODO improve readability
-//TODO fix better structure
-//TODO finish tasks
-
 void PrintMenu();
 int HandleMenu(FLIGHT_DEPARTURE **ppHead);
 void PrintList(FLIGHT_DEPARTURE **ppHead);
@@ -122,7 +118,7 @@ int HandleMenu(FLIGHT_DEPARTURE **ppHead){
       }
       int iSeat = atoi(aszSeat);
       
-      if(AddPassenger(pFlight, aszName, iAge, iChosenSeat) != 0){
+      if(AddPassenger(pFlight, aszName, iAge, iSeat) != 0){
         printf("Coulndt add passenger to this flight...\n");
       }
       PrintPassengers(pFlight);

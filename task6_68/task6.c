@@ -10,8 +10,6 @@
 
 //run with ./task6 -server [server] -port [port]
 
-/*TODO allow list of all letters and most used chars (. , ! ? etc)*/
-
 //Original code by David Wheeler and Roger Needham
 //Source: https://www.schneier.com/wp-content/uploads/2015/03/TEA-2.c
 //Changes made: changed from long to int
@@ -44,7 +42,7 @@ int CheckChar(int iC){
     iRc = OK;
   }
   
-  if(iC == 13 || iC == iLf || iC == iTab){
+  if(iC == iCr || iC == iLf || iC == iTab){
     iRc = OK;
   }
 
@@ -66,7 +64,6 @@ char *pszDecrypted){
     decrypt(uiV, uiW, uiKey);
     char cRes[9] = {0};
     memcpy(cRes, uiW, 8);
-    cRes[8] = '\0';
     
     //check if all 8 bytes are printable, if not, no need to continue decrypting
     for(int j = 0; j < 8; j++){
@@ -168,39 +165,61 @@ int main(int iArgC, char *apszArgV[]){
     close(sockFd); sockFd = -1;
     return 1;
   }
- 
- //copied pszHeader from the terminal, added \r\n after each line and \r\n\r\n at end
-  /*char *pszHeader = "HTTP/1.1 200 OK\r\nConnection close\r\nDate: Mon, May 12 2025 13:40:51\r\nServer: Eastwill Assistant - EXAM 2025\r\nContent-Length: 648\r\nContent-Type: text/encrypted\r\n\r\n";
-  int iHeaderSize = strlen(pszHeader);  //HEADER SIZE IS 161
-  printf("Header size: %d\n", iHeaderSize);*/
-  
-  //i know its bad but i couldnt figure out how to do it properly, so i found
-  //out that the length of the header is 161 chars with the commented out code above
-  char acHeader[162] = {0};
-  if(recv(sockFd, acHeader, 161, 0) < 0){
-    printf("Recv failed\n");
-    close(sockFd); sockFd = -1;
-    return 1;
-  }
-  acHeader[161] = '\0';
-  printf("%s\n", acHeader);
 
-  //recieving 162 unisgned ints because 648 / 4 (sizeof unsigned int) = 162
-  unsigned int uiV[162];
-  if(recv(sockFd, uiV, 648, 0) < 0){
-    printf("Failed to recieve binary file\n");
-    close(sockFd); sockFd = -1;
-    return 1;
+  //read it in unsigned chars in case char is signed and can be negative
+  unsigned char acBuf[4096] = {0};
+  int iTotalRead = 0;
+  while(1){
+    int iRead = recv(sockFd, acBuf + iTotalRead, 4096 - iTotalRead, 0);
+    if(iRead < 0){
+      printf("Failed to read contents\n");
+      close(sockFd); sockFd = -1;
+      return 1;
+    }
+    iTotalRead += iRead;
+    if(iRead == 0) break;
   }
-  
-  //finished with socket, so just closing it
   close(sockFd);
   sockFd = -1;
+
+  //find content length aka size of body
+  unsigned char *pszContentLength = strstr(acBuf, "Content-Length: ");
+  pszContentLength += 16; //length of "Content-Length: ", i counted it
+  char acContentLength[4] = {0};
+  memcpy(acContentLength, pszContentLength, 3);
+  acContentLength[3] = '\0';
+  int iSize = atoi(acContentLength);
   
-  //here should the decrypted text go
-  char acDecrypted[648] = {0};
-  BruteForce(uiV, 162, acDecrypted);
+  //strstr finds substring, body is after \r\n\r\n in HTTP/1.1
+  unsigned char *pszBody = strstr(acBuf, "\r\n\r\n");
+  pszBody += 4; //\r\n\r\n has length of 4, so move pointer 4 ahead
   
+  //copy 4 bytes at a time into unsigned ints
+  unsigned int *puiV = malloc(iSize);
+  if(puiV == NULL){
+    printf("Malloc failed!\n");
+    return 1;
+  }
+  //assuming iSize is divisible by 4 since the encrypted text is padded
+  for(int i = 0; i < (iSize / 4); i++){
+    memcpy(&puiV[i], pszBody, 4);
+    pszBody += 4;
+  }
+
+  char *pcDecrypted = malloc(iSize);
+  if(pcDecrypted == NULL){
+    printf("Malloc failed!\n");
+    free(puiV);
+    puiV = NULL;
+    return 1;
+  }
+
+
+  BruteForce(puiV, (iSize / 4), pcDecrypted);
+
+  free(puiV);
+  puiV = NULL;
+
   //when it is decrypted, create a file and write the decrypted values
   FILE *f = fopen("decrypted.txt", "w");
   if(f == NULL){
@@ -208,8 +227,14 @@ int main(int iArgC, char *apszArgV[]){
     return 1;
   }
   
-  fwrite(acDecrypted, strlen(acDecrypted), 1, f);
+  fwrite(pcDecrypted, strlen(pcDecrypted), 1, f);
 
+  free(pcDecrypted);
+  pcDecrypted = NULL;
   fclose(f);
   return 0;
 }
+
+
+
+

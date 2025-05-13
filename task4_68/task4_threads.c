@@ -11,6 +11,8 @@
 #define NUM_THREADS 2
 #define BYTE_RANGE 256
 
+//run with ./task4_threads [filename]
+
 //struct to avoid global variables
 typedef struct _THREAD_DATA{
   char aszFileName[124]; //doubt filename is larger than this
@@ -91,10 +93,10 @@ void TEA(FILE *ft, THREAD_DATA *td){
     //i understood that tea needs 128 bits keys, key[0] - key[3], however i do not
     //understand how to generate these, so I am just writing random stuff in here
     unsigned int uiKey[4] = {0};
-    uiKey[0] = 10;
-    uiKey[1] = 400;
-    uiKey[2] = 75;
-    uiKey[3] = 9999;
+    uiKey[0] = 0xFFFFFFFF;
+    uiKey[1] = 0x12345678;
+    uiKey[2] = 0xFFFFFFFF;
+    uiKey[3] = 0x87654321;
     
     //i believe this is what is supposed to be written into the encrypted file
     unsigned int uiW[2] = {0};
